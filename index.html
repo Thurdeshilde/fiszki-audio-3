@@ -318,6 +318,8 @@
   .filename-display {
     width: 100%;
     text-align: center;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
   }
   .filename-display .filename {
     font-size: 20px;
@@ -327,6 +329,7 @@
     word-break: break-word;
     hyphens: auto;
     lang: pl;
+    transition: filter 0.3s ease, opacity 0.3s ease;
   }
   .filename-display .ext {
     display: inline-block;
@@ -339,6 +342,33 @@
     border-radius: 4px;
     padding: 2px 6px;
     margin-top: 6px;
+    transition: filter 0.3s ease, opacity 0.3s ease;
+  }
+  .filename-display.hidden-name .filename {
+    filter: blur(8px);
+    opacity: 0.4;
+    user-select: none;
+  }
+  .filename-display.hidden-name .ext {
+    filter: blur(4px);
+    opacity: 0.2;
+    user-select: none;
+  }
+  .reveal-hint {
+    font-size: 11px;
+    color: var(--text-dim);
+    letter-spacing: 0.5px;
+    margin-top: 4px;
+    transition: opacity 0.3s;
+  }
+  .filename-display:not(.hidden-name) .reveal-hint { opacity: 0; }
+  .hide-name-toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    color: var(--text-mid);
+    cursor: pointer;
   }
 
   /* Waveform / status */
@@ -651,9 +681,10 @@
         <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
       </div>
 
-      <div class="filename-display">
+      <div class="filename-display" id="filenameWrapper">
         <div class="filename" id="filenameDisplay">Brak pliku</div>
         <span class="ext" id="extDisplay">—</span>
+        <div class="reveal-hint">tapnij, żeby odkryć</div>
       </div>
 
       <div class="audio-state" id="audioState">
@@ -698,6 +729,10 @@
       <div class="toggle-track on" id="toggleTrack"><div class="toggle-thumb"></div></div>
       <span>Auto-next</span>
     </div>
+    <div class="hide-name-toggle" id="hideNameToggle">
+      <div class="toggle-track" id="hideNameTrack"><div class="toggle-thumb"></div></div>
+      <span>Ukryj nazwę</span>
+    </div>
   </div>
 </div>
 
@@ -722,6 +757,7 @@
   let currentIndex = 0;
   let autoplay = true;
   let isPlaying = false;
+  let hideNameMode = false;
 
   // ── ELEMENTS ──
   const welcomeScreen = document.getElementById('welcome');
@@ -731,6 +767,7 @@
   const folderInput   = document.getElementById('folderInput');
 
   const filenameDisplay = document.getElementById('filenameDisplay');
+  const filenameWrapper = document.getElementById('filenameWrapper');
   const extDisplay      = document.getElementById('extDisplay');
   const folderDisplay   = document.getElementById('folderDisplay');
   const currentIdxEl    = document.getElementById('currentIdx');
@@ -829,6 +866,13 @@
     extDisplay.textContent = getExt(file.name);
     folderDisplay.textContent = getFolderName(file);
 
+    // Re-hide name if mode is on
+    if (hideNameMode) {
+      filenameWrapper.classList.add('hidden-name');
+    } else {
+      filenameWrapper.classList.remove('hidden-name');
+    }
+
     currentIdxEl.textContent = currentIndex + 1;
     totalCountEl.textContent = files.length;
     progressFill.style.width = ((currentIndex + 1) / files.length * 100) + '%';
@@ -896,6 +940,26 @@
   document.getElementById('autoplayToggle').addEventListener('click', () => {
     autoplay = !autoplay;
     toggleTrack.classList.toggle('on', autoplay);
+  });
+
+  // ── HIDE NAME TOGGLE ──
+  const hideNameTrack = document.getElementById('hideNameTrack');
+  document.getElementById('hideNameToggle').addEventListener('click', () => {
+    hideNameMode = !hideNameMode;
+    hideNameTrack.classList.toggle('on', hideNameMode);
+    if (hideNameMode) {
+      filenameWrapper.classList.add('hidden-name');
+    } else {
+      filenameWrapper.classList.remove('hidden-name');
+    }
+    try { localStorage.setItem('fiszki_hide_name', hideNameMode ? '1' : '0'); } catch(e) {}
+  });
+
+  // Tapnięcie w nazwę odkrywa ją
+  filenameWrapper.addEventListener('click', () => {
+    if (hideNameMode && filenameWrapper.classList.contains('hidden-name')) {
+      filenameWrapper.classList.remove('hidden-name');
+    }
   });
 
   // ── SWIPE ──
@@ -989,6 +1053,10 @@
   try {
     const saved = parseInt(localStorage.getItem('fiszki_idx'));
     if (!isNaN(saved)) currentIndex = saved;
+    if (localStorage.getItem('fiszki_hide_name') === '1') {
+      hideNameMode = true;
+      hideNameTrack.classList.add('on');
+    }
   } catch(e) {}
 </script>
 </body>
