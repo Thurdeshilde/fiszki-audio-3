@@ -371,6 +371,50 @@
     cursor: pointer;
   }
 
+  /* Speed control */
+  .speed-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+    justify-content: center;
+  }
+  .speed-btn {
+    padding: 5px 10px;
+    border-radius: 8px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--text-mid);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s, border-color 0.15s;
+  }
+  .speed-btn.active {
+    background: var(--accent-dim);
+    border-color: var(--accent);
+    color: var(--accent);
+    font-weight: 700;
+  }
+  .speed-btn:active { opacity: 0.7; }
+
+  /* Browser hide-names toggle */
+  .browser-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-left: auto;
+  }
+  .browser-hide-toggle {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    color: var(--text-mid);
+    cursor: pointer;
+    white-space: nowrap;
+  }
+
   /* Waveform / status */
   .audio-state {
     width: 100%;
@@ -718,6 +762,13 @@
           </svg>
         </div>
       </div>
+
+      <div class="speed-row">
+        <button class="speed-btn active" data-speed="1">1×</button>
+        <button class="speed-btn" data-speed="1.25">1.25×</button>
+        <button class="speed-btn" data-speed="1.5">1.5×</button>
+        <button class="speed-btn" data-speed="2">2×</button>
+      </div>
     </div>
   </div>
 
@@ -745,6 +796,12 @@
       </svg>
     </div>
     <h2>Fiszki (<span id="browserCount">0</span>)</h2>
+    <div class="browser-actions">
+      <div class="browser-hide-toggle" id="browserHideToggle">
+        <div class="toggle-track" id="browserHideTrack"><div class="toggle-thumb"></div></div>
+        <span>Ukryj nazwy</span>
+      </div>
+    </div>
   </div>
   <div class="file-list" id="fileList"></div>
 </div>
@@ -758,6 +815,8 @@
   let autoplay = true;
   let isPlaying = false;
   let hideNameMode = false;
+  let playbackRate = 1;
+  let browserHideNames = false;
 
   // ── ELEMENTS ──
   const welcomeScreen = document.getElementById('welcome');
@@ -1025,22 +1084,59 @@
       const item = document.createElement('div');
       item.className = 'file-item' + (idx === currentIndex ? ' active' : '');
       const folder = getFolderName(file);
+      const nameHtml = browserHideNames
+        ? `<span class="browser-hidden-name" data-idx="${idx}" style="filter:blur(6px);opacity:0.4;cursor:pointer;transition:filter 0.3s,opacity 0.3s">${stripExt(file.name)}</span>`
+        : stripExt(file.name);
       item.innerHTML = `
         <div class="file-icon">${idx === currentIndex ? '▶' : '🎵'}</div>
         <div class="file-info">
-          <div class="name">${stripExt(file.name)}</div>
-          <div class="meta">${folder}</div>
+          <div class="name">${browserHideNames ? (idx + 1) + '. ' : ''}${nameHtml}</div>
+          <div class="meta">${browserHideNames ? 'tapnij nazwę, żeby odkryć' : folder}</div>
         </div>`;
+      // Reveal name on tap when hidden
+      if (browserHideNames) {
+        const nameEl = item.querySelector('.browser-hidden-name');
+        if (nameEl) {
+          nameEl.addEventListener('click', (e) => {
+            e.stopPropagation();
+            nameEl.style.filter = 'none';
+            nameEl.style.opacity = '1';
+            item.querySelector('.meta').textContent = folder;
+          });
+        }
+      }
       item.addEventListener('click', () => {
         loadTrack(idx, isPlaying);
         showPlayer();
       });
       fileList.appendChild(item);
     });
-    // Scroll to active
     const active = fileList.querySelector('.active');
     if (active) active.scrollIntoView({ block: 'center' });
   }
+
+  // ── SPEED CONTROL ──
+  document.querySelectorAll('.speed-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      playbackRate = parseFloat(btn.dataset.speed);
+      audioEl.playbackRate = playbackRate;
+      document.querySelectorAll('.speed-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      try { localStorage.setItem('fiszki_speed', playbackRate); } catch(e) {}
+    });
+  });
+
+  // Keep playback rate after src change
+  audioEl.addEventListener('play', () => { audioEl.playbackRate = playbackRate; });
+
+  // ── BROWSER HIDE NAMES ──
+  const browserHideTrack = document.getElementById('browserHideTrack');
+  document.getElementById('browserHideToggle').addEventListener('click', () => {
+    browserHideNames = !browserHideNames;
+    browserHideTrack.classList.toggle('on', browserHideNames);
+    renderBrowser();
+    try { localStorage.setItem('fiszki_browser_hide', browserHideNames ? '1' : '0'); } catch(e) {}
+  });
 
   // ── KEYBOARD (desktop) ──
   document.addEventListener('keydown', (e) => {
@@ -1056,6 +1152,17 @@
     if (localStorage.getItem('fiszki_hide_name') === '1') {
       hideNameMode = true;
       hideNameTrack.classList.add('on');
+    }
+    const savedSpeed = parseFloat(localStorage.getItem('fiszki_speed'));
+    if (!isNaN(savedSpeed) && savedSpeed !== 1) {
+      playbackRate = savedSpeed;
+      document.querySelectorAll('.speed-btn').forEach(b => {
+        b.classList.toggle('active', parseFloat(b.dataset.speed) === playbackRate);
+      });
+    }
+    if (localStorage.getItem('fiszki_browser_hide') === '1') {
+      browserHideNames = true;
+      browserHideTrack.classList.add('on');
     }
   } catch(e) {}
 </script>
