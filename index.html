@@ -473,24 +473,24 @@ async function showFolderPicker(parentId) {
 async function loadDriveFolder(folderId, folderName) {
   showScreen('folderPicker');
   const container = document.getElementById('folderListContainer');
-  container.innerHTML = '<div class="loading-state"><div class="spinner"></div><span>Wczytywanie plików audio...</span></div>';
+  container.innerHTML = '<div class="loading-state"><div class="spinner"></div><span>Wczytywanie plików audio (w tym podfoldery)...</span></div>';
 
   try {
-    const mimeQ = AUDIO_MIME.map(m => `mimeType='${m}'`).join(' or ');
-    const q = `(${mimeQ}) and '${folderId}' in parents and trashed=false`;
-    const r = await fetch(
-      `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id,name)&orderBy=name&pageSize=500`,
-      { headers: { Authorization: 'Bearer ' + accessToken } }
-    );
-    const data = await r.json();
-    const driveFiles = sortByName(data.files || []);
+    const allFiles = [];
+    await collectAudioFilesRecursive(folderId, folderName, allFiles, container);
 
-    if (driveFiles.length === 0) {
-      container.innerHTML = '<div class="loading-state"><span>Brak plików audio w tym folderze</span></div>';
+    if (allFiles.length === 0) {
+      container.innerHTML = '<div class="loading-state"><span>Brak plików audio w tym folderze ani podfolderach</span></div>';
       return;
     }
 
-    files = driveFiles.map(f => ({ id: f.id, name: f.name, folderName, src: null }));
+    // Sort by folder then name
+    allFiles.sort((a, b) => {
+      const fc = a.folderName.localeCompare(b.folderName, 'pl');
+      return fc !== 0 ? fc : a.name.localeCompare(b.name, 'pl');
+    });
+
+    files = allFiles;
     currentFolderId = folderId;
     currentFolderName = folderName;
 
@@ -499,11 +499,9 @@ async function loadDriveFolder(folderId, folderName) {
       localStorage.setItem('fiszki_folder_name', folderName);
     } catch(e) {}
 
-    // Restore saved index
     try {
       const saved = parseInt(localStorage.getItem('fiszki_idx'));
-      if (!isNaN(saved) && saved < files.length) currentIndex = saved;
-      else currentIndex = 0;
+      currentIndex = (!isNaN(saved) && saved < files.length) ? saved : 0;
     } catch(e) { currentIndex = 0; }
 
     showScreen('player');
@@ -511,6 +509,32 @@ async function loadDriveFolder(folderId, folderName) {
 
   } catch(e) {
     container.innerHTML = `<div class="loading-state"><span>Błąd: ${e.message}</span></div>`;
+  }
+}
+
+async function collectAudioFilesRecursive(folderId, folderName, results, container) {
+  // Update loading message
+  if (container) container.innerHTML = `<div class="loading-state"><div class="spinner"></div><span>Skanowanie: ${folderName} (${results.length} plików)...</span></div>`;
+
+  // Get audio files in this folder
+  const mimeQ = AUDIO_MIME.map(m => `mimeType='${m}'`).join(' or ');
+  const audioQ = `(${mimeQ}) and '${folderId}' in parents and trashed=false`;
+  const audioR = await fetch(
+    `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(audioQ)}&fields=files(id,name)&orderBy=name&pageSize=500`,
+    { headers: { Authorization: 'Bearer ' + accessToken } }
+  );
+  const audioData = await audioR.json();
+  (audioData.files || []).forEach(f => results.push({ id: f.id, name: f.name, folderName, src: null }));
+
+  // Get subfolders and recurse
+  const folderQ = `mimeType='application/vnd.google-apps.folder' and '${folderId}' in parents and trashed=false`;
+  const folderR = await fetch(
+    `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(folderQ)}&fields=files(id,name)&orderBy=name&pageSize=100`,
+    { headers: { Authorization: 'Bearer ' + accessToken } }
+  );
+  const folderData = await folderR.json();
+  for (const sub of (folderData.files || [])) {
+    await collectAudioFilesRecursive(sub.id, sub.name, results, container);
   }
 }
 
